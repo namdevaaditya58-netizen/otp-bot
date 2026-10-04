@@ -2,6 +2,7 @@
 """
 Firebase SMS Dashboard Bot — FINAL
 - Multi-Firebase (40)
+- Bulk Firebase Add
 - Force Join + Captcha Verification
 - Referral System (1 refer = 3 hours)
 - Channel leave → referrer access revoke
@@ -64,7 +65,7 @@ MAX_FIREBASES = 40
 CLEANUP_INTERVAL = 60
 SMS_MONITOR_INTERVAL = 1
 SMS_MONITOR_DURATION = 300
-SMS_MONITOR_IDLE_TIMEOUT = 600  # 10 minutes no button tap → auto stop
+SMS_MONITOR_IDLE_TIMEOUT = 600
 ADMIN_PANEL_EDIT_INTERVAL = 5
 WELCOME_IMAGE_URL = "https://i.ibb.co/CK3s8vzR/Gemini-Generated-Image-en17gcen17gcen17.png"
 
@@ -73,7 +74,7 @@ REFERRAL_HOURS = 1
 REFERRAL_SECONDS = REFERRAL_HOURS * 3600
 
 # Gift
-GIFT_ACCESS_MAX_HOURS = 24 * 365  # 1 year max per gift
+GIFT_ACCESS_MAX_HOURS = 24 * 365
 
 # Files
 FORCE_JOIN_FILE = os.getenv("FORCE_JOIN_FILE", "force_join_channels.json")
@@ -229,7 +230,6 @@ known_users = _load_user_ids()
 user_access_state: Dict[int, bool] = {}
 verified_access_users: Set[int] = set()
 
-# ---- Referral DB ----
 _referral_lock = asyncio.Lock()
 
 
@@ -372,7 +372,6 @@ async def process_referral(referrer_id: int, referred_id: int) -> dict:
 
 
 async def check_referred_user_left(referred_id: int):
-    """When a referred user leaves channel, revoke referrer's access too."""
     try:
         uid = str(referred_id)
         if uid not in REFERRAL_DB:
@@ -635,13 +634,10 @@ def _extract_otp(body: str) -> Optional[str]:
     if not body:
         return None
     text = str(body).replace("\u200b", " ").replace("\u00a0", " ")
-    
-    # Universal TEST code detection conditions
     patterns = [
         r'\b(?:OTP|code|verification|verify|login|passcode)\D{0,20}(\d{4,8})\b',
         r'\b(\d{4,8})\b(?:\D{0,20})(?:OTP|code|verification|verify|login)\b',
     ]
-    
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
@@ -651,7 +647,6 @@ def _extract_otp(body: str) -> Optional[str]:
                     return candidate
             except:
                 pass
-    
     return None
 
 
@@ -1130,7 +1125,6 @@ async def _require_access(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user = update.effective_user
     uid = user.id
 
-    # 1) Maintenance
     if maintenance_mode and uid not in ADMIN_IDS:
         maintenance_text = _bold_blockquote(
             "🛠️ 𝗕𝗢𝗧 𝗠𝗔𝗜𝗡𝗧𝗘𝗡𝗔𝗡𝗖𝗘 𝗠𝗢𝗗𝗘 𝗢𝗡 ⚙️")
@@ -1153,7 +1147,6 @@ async def _require_access(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 pass
         return False
 
-    # 2) Force Join
     if REQUIRED_CHANNELS and uid not in ADMIN_IDS:
         joined = await check_force_join(context.bot, uid)
         user_access_state[uid] = joined
@@ -1180,7 +1173,6 @@ async def _require_access(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 reply_markup=kb, bot=context.bot)
             return False
 
-        # 3) Captcha
         if (captcha_enabled and uid not in ADMIN_IDS
                 and uid not in verified_access_users
                 and not context.user_data.get("force_join_verified")):
@@ -1207,7 +1199,6 @@ async def _require_access(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 chat_id=chat_id, text=captcha_text, parse_mode="HTML")
             return False
 
-    # 4) Access Time Check
     if uid not in ADMIN_IDS and not has_access(uid):
         access_msg = _bold_blockquote(
             "⚠️ 𝗔𝗖𝗖𝗘𝗦𝗦 𝗥𝗘𝗦𝗧𝗥𝗜𝗖𝗧𝗘𝗗\n\n"
@@ -1422,6 +1413,7 @@ def admin_panel_kb():
     captcha_label = "🔐 CAPTCHA ON" if captcha_enabled else "🔓 CAPTCHA OFF"
     return InlineKeyboardMarkup([
         [styled_button("➕ ADD FIREBASE", "admin_add_firebase", "success")],
+        [styled_button("📦 BULK ADD FIREBASE", "admin_bulk_add_firebase", "success")],
         [styled_button("📋 MANAGE FIREBASES", "admin_manage_fb", "primary")],
         [styled_button("📊 BOT STATISTICS", "admin_stats", "primary")],
         [styled_button("🎁 GIFT ACCESS", "admin_gift_access", "success")],
@@ -1655,11 +1647,7 @@ async def _show_cached_device_list(q, sess):
         reply_markup=device_list_kb(devices, mode="online", page=page))
 
 
-# ============================================================
-# DEVICE VIEW BUILDER (reusable)
-# ============================================================
 def _build_device_view(device_id: str, info: dict):
-    """Return (text, reply_markup, mode) for a device info screen."""
     tag = info.get("fb_tag", "?")
     real_cid = info.get("real_cid", device_id)
     raw = info.get("raw") or {}
@@ -1683,7 +1671,6 @@ def _build_device_view(device_id: str, info: dict):
 
 
 async def _show_device_view(q, sess, device_id: str):
-    """Show device info screen, with fallback rebuild if info is missing."""
     info = sess.get("devices", {}).get(device_id)
     if not info:
         parsed_tag, parsed_cid = _parse_prefixed(device_id)
@@ -1732,7 +1719,6 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("force_join_captcha", None)
     context.user_data.pop("force_join_verified", None)
 
-    # --- Referral ---
     if update.message and update.message.text and " " in update.message.text:
         parts = update.message.text.split(maxsplit=1)
         if len(parts) > 1 and parts[1].startswith("ref_"):
@@ -1754,7 +1740,6 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except (ValueError, TypeError):
                 pass
 
-    # --- Access check (force join + captcha + time) ---
     if not await _require_access(update, context):
         return
 
@@ -1775,7 +1760,6 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # GENERATE NUMBER
 # ============================================================
 async def _safe_edit_callback_message(q, text: str, *, parse_mode=None, reply_markup=None):
-    """Edit callback message whether it is a photo (caption) or a text message."""
     msg = q.message
     is_photo = bool(getattr(msg, "photo", None))
     try:
@@ -1851,7 +1835,6 @@ async def generate_number_callback(update: Update, context: ContextTypes.DEFAULT
 
     stop_sms_monitor(uid)
 
-    # Delete previous SMS messages
     current_state = sms_monitor_state.get(uid)
     if current_state:
         message_ids = current_state.get("sent_message_ids", [])
@@ -1859,7 +1842,7 @@ async def generate_number_callback(update: Update, context: ContextTypes.DEFAULT
             try:
                 for msg_id in message_ids:
                     await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-                    await asyncio.sleep(0.1)  # Small delay between deletes
+                    await asyncio.sleep(0.1)
             except Exception as e:
                 logger.warning(f"could not delete old SMS messages: {e}")
 
@@ -1955,7 +1938,7 @@ async def admin_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     text = (update.message.text or "").strip()
 
-    # ---------- GIFT SINGLE: expects "<user_id> <hours>" ----------
+    # ---------- GIFT SINGLE ----------
     if action == "gift_single":
         parts = text.split()
         if len(parts) != 2:
@@ -1982,7 +1965,6 @@ async def admin_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         grant_access(target_uid, seconds)
         context.user_data.pop("admin_action", None)
         remaining = format_remaining_time(target_uid)
-        # Notify user
         notified = False
         try:
             await context.bot.send_message(
@@ -2005,7 +1987,7 @@ async def admin_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown", reply_markup=admin_panel_kb())
         return
 
-    # ---------- GIFT ALL: expects "<hours>" ----------
+    # ---------- GIFT ALL ----------
     if action == "gift_all":
         try:
             hours = float(text.strip())
@@ -2088,6 +2070,48 @@ async def admin_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🟢 Online: `{online}`\n🔴 Offline: `{offline}`\n"
             f"📊 Panels: {len(global_fb_list)}/{MAX_FIREBASES}",
             parse_mode="Markdown", reply_markup=admin_panel_kb())
+        return
+
+    # ---------- BULK ADD FIREBASE ----------
+    if action == "bulk_add_firebase":
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+        if not lines:
+            await update.message.reply_text("❌ Koi URL nahi mila.")
+            return
+
+        added = []
+        skipped = []
+        invalid = []
+
+        for line in lines:
+            url = normalize_fb_url(line)
+            if not url:
+                invalid.append(line[:50])
+                continue
+            if any(u == url for u, _ in global_fb_list):
+                skipped.append(url[:50])
+                continue
+            if len(global_fb_list) >= MAX_FIREBASES:
+                break
+            new_tag = f"FB{len(global_fb_list) + 1}"
+            global_fb_list.append((url, new_tag))
+            added.append(new_tag)
+
+        _save_global_firebases()
+        context.user_data.pop("admin_action", None)
+
+        if added:
+            await refresh_global_device_cache()
+
+        result = (
+            f"✅ *Bulk Import Complete*\n\n"
+            f"📥 Added: `{len(added)}`\n"
+            f"⏭ Skipped (duplicate): `{len(skipped)}`\n"
+            f"❌ Invalid: `{len(invalid)}`\n"
+            f"📊 Total: `{len(global_fb_list)}/{MAX_FIREBASES}`"
+        )
+        await update.message.reply_text(
+            result, parse_mode="Markdown", reply_markup=admin_panel_kb())
         return
 
     # ---------- ADD CHANNEL ----------
@@ -2180,7 +2204,6 @@ async def _delete_monitor_status_message(bot, uid: int, chat_id: int):
 
 
 def touch_sms_monitor(uid: int):
-    """Reset idle timer whenever user taps a button."""
     state = sms_monitor_state.get(uid)
     if state:
         state["last_activity"] = time.monotonic()
@@ -2430,11 +2453,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             or data.startswith("admin_fb_delete:")):
         _stop_admin_panel_live_task(uid)
 
-    # ---------- GIFT ACCESS MENU ----------
     if data == "admin_gift_access":
         await q.edit_message_text(
             "🎁 *Gift Access*\n\n"
-            "Kaise gift karna hai?\n\n"
             "👤 *Single User* — ek user ko hours ke hisaab se access do\n"
             "👥 *All Users* — sabhi users ko same hours do\n\n"
             "Neeche se option chuno:",
@@ -2449,7 +2470,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`<user_id> <hours>`\n\n"
             "Example:\n"
             "`123456789 5`\n\n"
-            "Iska matlab: user 123456789 ko 5 ghante ka access.\n\n"
             "📌 *Hours float bhi ho sakte hain* (e.g. `0.5` = 30 min)",
             parse_mode="Markdown", reply_markup=admin_gift_kb())
         return
@@ -2461,9 +2481,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Sirf hours likh kar bhejein.\n"
             f"Total users: `{len(known_users)}`\n\n"
             "Example:\n"
-            "`5`\n\n"
-            "Iska matlab: sabhi users ko 5 ghante ka access.\n\n"
-            "📌 *Hours float bhi ho sakte hain* (e.g. `0.5` = 30 min)",
+            "`5`",
             parse_mode="Markdown", reply_markup=admin_gift_kb())
         return
 
@@ -2523,6 +2541,22 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "➕ *Add Firebase*\n\n"
             "Firebase Realtime Database URL bhejein.\n"
             "Example: `https://xxx-default-rtdb.firebaseio.com`",
+            parse_mode="Markdown", reply_markup=admin_back_kb())
+        return
+
+    if data == "admin_bulk_add_firebase":
+        context.user_data["admin_action"] = "bulk_add_firebase"
+        await q.edit_message_text(
+            "📦 *Bulk Add Firebase*\n\n"
+            "Ek saath multiple Firebase URLs bhejo.\n"
+            "Har URL nayi line pe likho.\n\n"
+            "Example:\n"
+            "```\n"
+            "https://fb1-default-rtdb.firebaseio.com\n"
+            "https://fb2-default-rtdb.firebaseio.com\n"
+            "https://fb3-default-rtdb.firebaseio.com\n"
+            "```\n\n"
+            f"Max: {MAX_FIREBASES} total",
             parse_mode="Markdown", reply_markup=admin_back_kb())
         return
 
@@ -2637,7 +2671,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # SMS VIEW
 # ============================================================
 async def _show_sms_safe(q, info: dict, device_id: str, updated_at: Optional[str] = None):
-    """Fetch and display last N SMS for a device."""
     fb_url = info.get("fb_url", "")
     real_cid = info.get("real_cid", device_id)
     tag = info.get("fb_tag", "?")
@@ -2690,11 +2723,10 @@ async def _show_sms_safe(q, info: dict, device_id: str, updated_at: Optional[str
         if not body:
             body = "(no body)"
         number_label = circled_numbers[i - 1] if i <= len(circled_numbers) else f"{i}."
-        
-        # Add separator between SMS
+
         if i > 1:
             lines.append("━━━━━━━━━━━━━━━━━━━━━━━")
-        
+
         lines.extend(["",
                       f"{number_label} ᴅᴇᴠɪᴄᴇ ɴᴀᴍᴇ: {sender}",
                       f"⏱️ ᴛɪᴍᴇ: {when}",
@@ -2708,12 +2740,10 @@ async def _show_sms_safe(q, info: dict, device_id: str, updated_at: Optional[str
                       "𝗨𝗽𝗱𝗮𝘁𝗲𝗱",
                       "━━━━━━━━━━━━━━━━━━━━━━━"])
     text = "\n".join(lines)
-    
-    # Send all SMS in single message (no separate chats)
+
     if len(text) > 3800:
-        # If too long, split but keep in one message with ... continuation
         text = text[:3800] + "\n\n... (truncated - too many SMS)"
-    
+
     await _safe_edit_callback_message(
         q, text, parse_mode="Markdown",
         reply_markup=sms_view_kb(device_id))
@@ -2780,16 +2810,13 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "device_list":
-        # Don't stop monitor - show current device info
         uid = q.from_user.id
-        touch_sms_monitor(uid)  # Keep monitor active
-        
+        touch_sms_monitor(uid)
+
         current_device = sess.get("current_device")
         if current_device:
-            # Show current device info
             await _show_device_view(q, sess, current_device)
         else:
-            # No current device, show device list
             if not sess.get("devices"):
                 await q.answer("No cached scan. Refreshing...", show_alert=False)
                 await scan_and_show(update, context, edit_target=q.message)
@@ -3139,7 +3166,7 @@ def main():
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(
         admin_callback,
-        pattern=r"^admin_(back|stats|channels|add_channel|add_firebase|manage_fb|broadcast|toggle_maintenance|toggle_captcha|remove_channel:\d+|fb_refresh:\d+|fb_delete:\d+|fb_info:\d+|gift_access|gift_single|gift_all)$"))
+        pattern=r"^admin_(back|stats|channels|add_channel|add_firebase|bulk_add_firebase|manage_fb|broadcast|toggle_maintenance|toggle_captcha|remove_channel:\d+|fb_refresh:\d+|fb_delete:\d+|fb_info:\d+|gift_access|gift_single|gift_all)$"))
     app.add_handler(CallbackQueryHandler(generate_number_callback,
                                           pattern="^generate_number$"))
     app.add_handler(CallbackQueryHandler(
