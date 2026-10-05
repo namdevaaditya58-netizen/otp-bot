@@ -67,7 +67,7 @@ SMS_MONITOR_INTERVAL = 1
 SMS_MONITOR_DURATION = 300
 SMS_MONITOR_IDLE_TIMEOUT = 600
 ADMIN_PANEL_EDIT_INTERVAL = 5
-WELCOME_IMAGE_URL = "https://chatgpt.com/s/m_6ac3552df210819183bc7b111f55af06"
+WELCOME_IMAGE_URL = "https://ibb.co/BH6hG7vW"
 
 # Referral
 REFERRAL_HOURS = 1
@@ -1063,7 +1063,7 @@ def build_welcome_caption_joined(first_name: str, user_id: int) -> str:
         f"⏳ 𝗔𝗖𝗖𝗘𝗦𝗦 : {remaining}\n\n"
         f"🔗 𝗬𝗢𝗨𝗥 𝗥𝗘𝗙𝗘𝗥𝗥𝗔𝗟 𝗟𝗜𝗡𝗞 :\n<code>{refer_link}</code>\n\n"
         f"📊 𝗧𝗢𝗧𝗔𝗟 𝗥𝗘𝗙𝗘𝗥𝗥𝗔𝗟𝗦 : {ref_count}\n\n"
-        "🎁 𝟭 𝗥𝗘𝗙𝗘𝗥 = 𝟯 𝗛𝗢𝗨𝗥𝗦 𝗔𝗖𝗖𝗘𝗦𝗦\n\n"
+        "🎁𝟭 𝗥𝗘𝗙𝗘𝗥 = 𝟯𝟬 𝗠𝗜𝗡𝗦 𝗔𝗖𝗖𝗘𝗦𝗦\n\n"
         "👇 𝗧𝗮𝗽 𝗯𝗲𝗹𝗼𝘄 𝘁𝗼 𝘀𝘁𝗮𝗿𝘁"
     )
 
@@ -1203,7 +1203,7 @@ async def _require_access(update: Update, context: ContextTypes.DEFAULT_TYPE,
         access_msg = _bold_blockquote(
             "⚠️ 𝗔𝗖𝗖𝗘𝗦𝗦 𝗥𝗘𝗦𝗧𝗥𝗜𝗖𝗧𝗘𝗗\n\n"
             "🔒 𝗬𝗼𝘂𝗿 𝗮𝗰𝗰𝗲𝘀𝘀 𝗵𝗮𝘀 𝗲𝘅𝗽𝗶𝗿𝗲𝗱.\n\n"
-            "🎁 𝟭 𝗥𝗘𝗙𝗘𝗥 = 𝟯 𝗛𝗢𝗨𝗥𝗦 𝗔𝗖𝗖𝗘𝗦𝗦\n\n"
+            "🎁 𝟭 𝗥𝗘𝗙𝗘𝗥 = 𝟯𝟬 𝗠𝗜𝗡𝗦 𝗔𝗖𝗖𝗘𝗦𝗦\n\n"
             "🔗 𝗬𝗢𝗨𝗥 𝗥𝗘𝗙𝗘𝗥𝗥𝗔𝗟 𝗟𝗜𝗡𝗞 :\n"
             f"<code>https://t.me/{BOT_USERNAME}?start=ref_{uid}</code>\n\n"
             "📌 𝗦𝗵𝗮𝗿𝗲 𝘁𝗵𝗶𝘀 𝗹𝗶𝗻𝗸 𝘄𝗶𝘁𝗵 𝗳𝗿𝗶𝗲𝗻𝗱𝘀 𝘁𝗼 𝗴𝗲𝘁 𝗮𝗰𝗰𝗲𝘀𝘀!")
