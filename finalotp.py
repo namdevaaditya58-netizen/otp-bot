@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
++#!/usr/bin/env python3
 """
 Firebase SMS Dashboard Bot — FINAL
 - Multi-Firebase (40)
@@ -44,7 +44,7 @@ from telegram.ext import (
 # ============================================================
 # CONFIG
 # ============================================================
-BOT_TOKEN = "8855750462:AAGoqjmcCZRgV85G8t857BqRz5d6AVYut10"
+BOT_TOKEN = "8855750462:AAHsSxWpbwXaPkLRsRmork7AxTd7Uw-10rE"
 ADMIN_IDS = [6001201900]
 
 logging.basicConfig(
