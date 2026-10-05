@@ -28,8 +28,8 @@ def run_flask_server():
 
 def run_bot():
     """basic.py ka main() call karo."""
-    import basic
-    basic.main()
+    import finalotp
+    finalotp.main()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
