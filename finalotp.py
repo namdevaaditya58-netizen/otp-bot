@@ -3186,7 +3186,6 @@ def main():
     bot_instance = app.bot
 
     app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(
         admin_callback,
         pattern=r"^admin_(back|stats|channels|add_channel|add_firebase|bulk_add_firebase|manage_fb|broadcast|toggle_maintenance|toggle_captcha|remove_channel:\d+|fb_refresh:\d+|fb_delete:\d+|fb_info:\d+|gift_access|gift_single|gift_all)$"))
