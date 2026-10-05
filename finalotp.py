@@ -1,4 +1,4 @@
-+#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Firebase SMS Dashboard Bot — FINAL
 - Multi-Firebase (40)
