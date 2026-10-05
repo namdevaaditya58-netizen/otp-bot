@@ -1719,30 +1719,51 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("force_join_captcha", None)
     context.user_data.pop("force_join_verified", None)
 
+    # --- Store referral info FIRST (before access check) ---
     if update.message and update.message.text and " " in update.message.text:
         parts = update.message.text.split(maxsplit=1)
         if len(parts) > 1 and parts[1].startswith("ref_"):
             try:
                 referrer_id = int(parts[1][4:])
-                result = await process_referral(referrer_id, uid)
-                if result["success"]:
-                    try:
-                        ref_msg = _bold_blockquote(
-                            "🎉 𝗥𝗘𝗙𝗘𝗥𝗥𝗔𝗟 𝗦𝗨𝗖𝗖𝗘𝗦𝗦\n\n"
-                            f"👤 @{username} 𝗝𝗢𝗜𝗡𝗘𝗗 𝗨𝗦𝗜𝗡𝗚 𝗬𝗢𝗨𝗥 𝗟𝗜𝗡𝗞\n\n"
-                            "⏳ +𝟯 𝗛𝗢𝗨𝗥𝗦 𝗔𝗖𝗖𝗘𝗦𝗦 𝗔𝗗𝗗𝗘𝗗\n"
-                            f"📊 𝗔𝗖𝗖𝗘𝗦𝗦 : {result.get('referrer_remaining', 'N/A')}")
-                        await context.bot.send_message(
-                            chat_id=referrer_id, text=ref_msg, parse_mode="HTML")
-                    except Exception as exc:
-                        logger.exception(
-                            f"[REFERRAL] notification failed: referrer={referrer_id}, err={exc}")
+                context.user_data["pending_referrer"] = referrer_id
             except (ValueError, TypeError):
                 pass
 
+    # --- Access check (force join + captcha + time) ---
     if not await _require_access(update, context):
         return
 
+    # --- Process referral AFTER access check passes ---
+    pending_referrer = context.user_data.pop("pending_referrer", None)
+    if pending_referrer:
+        try:
+            result = await process_referral(pending_referrer, uid)
+            if result["success"]:
+                try:
+                    ref_msg = _bold_blockquote(
+                        "🎉 𝗥𝗘𝗙𝗘𝗥𝗥𝗔𝗟 𝗦𝗨𝗖𝗖𝗘𝗦𝗦\n\n"
+                        f"👤 @{username} 𝗝𝗢𝗜𝗡𝗘𝗗 𝗨𝗦𝗜𝗡𝗚 𝗬𝗢𝗨𝗥 𝗟𝗜𝗡𝗞\n\n"
+                        "⏳ +𝟯𝟬 𝗠𝗜𝗡𝗦 𝗔𝗖𝗖𝗘𝗦𝗦 𝗔𝗗𝗗𝗘𝗗\n"
+                        f"📊 𝗔𝗖𝗖𝗘𝗦𝗦 : {result.get('referrer_remaining', 'N/A')}")
+                    await context.bot.send_message(
+                        chat_id=pending_referrer, text=ref_msg, parse_mode="HTML")
+                except Exception as exc:
+                    logger.exception(
+                        f"[REFERRAL] notification failed: referrer={pending_referrer}, err={exc}")
+        except (ValueError, TypeError):
+            pass
+
+    stop_sms_monitor(uid)
+    _stop_admin_panel_live_task(uid)
+    sess = await _ensure_session(uid)
+    sess["devices"] = {}
+    sess["current_device"] = ""
+    sess["mode"] = "online"
+    sess["awaiting_fb_add"] = False
+    context.user_data.pop("awaiting_url", None)
+    context.user_data.pop("awaiting_fb_add", None)
+
+    await _send_main_menu(context, update.effective_chat.id, first_name, uid)
     stop_sms_monitor(uid)
     _stop_admin_panel_live_task(uid)
     sess = await _ensure_session(uid)
@@ -1877,25 +1898,6 @@ async def generate_number_callback(update: Update, context: ContextTypes.DEFAULT
     await _safe_edit_callback_message(
         q, text_msg, parse_mode="Markdown",
         reply_markup=device_actions_kb(device_id, "online"))
-
-
-# ============================================================
-# ADMIN COMMAND
-# ============================================================
-async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if uid not in ADMIN_IDS:
-        await update.message.reply_text("⛔ Admin only.")
-        return
-    _stop_admin_panel_live_task(uid)
-    await update.message.reply_text(
-        "🛠 *Admin Panel*\n\nSelect an action:",
-        parse_mode="Markdown", reply_markup=admin_panel_kb())
-
-
-# ============================================================
-# CAPTCHA INPUT
-# ============================================================
 async def captcha_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "force_join_captcha" not in context.user_data:
         return
@@ -1917,6 +1919,27 @@ async def captcha_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("force_join_captcha", None)
     context.user_data["force_join_verified"] = True
     verified_access_users.add(update.effective_user.id)
+
+    # Process pending referral after captcha solve
+    pending_referrer = context.user_data.pop("pending_referrer", None)
+    if pending_referrer:
+        try:
+            uid = update.effective_user.id
+            username = update.effective_user.username or str(uid)
+            result = await process_referral(pending_referrer, uid)
+            if result["success"]:
+                try:
+                    ref_msg = _bold_blockquote(
+                        "🎉 𝗥𝗘𝗙𝗘𝗥𝗥𝗔𝗟 𝗦𝗨𝗖𝗖𝗘𝗦𝗦\n\n"
+                        f"👤 @{username} 𝗝𝗢𝗜𝗡𝗘𝗗 𝗨𝗦𝗜𝗡𝗚 𝗬𝗢𝗨𝗥 𝗟𝗜𝗡𝗞\n\n"
+                        "⏳ +𝟯𝟬 𝗠𝗜𝗡𝗦 𝗔𝗖𝗖𝗘𝗦𝗦 𝗔𝗗𝗗𝗘𝗗\n"
+                        f"📊 𝗔𝗖𝗖𝗘𝗦𝗦 : {result.get('referrer_remaining', 'N/A')}")
+                    await context.bot.send_message(
+                        chat_id=pending_referrer, text=ref_msg, parse_mode="HTML")
+                except Exception as exc:
+                    logger.exception(f"[REFERRAL] notification failed: {exc}")
+        except (ValueError, TypeError):
+            pass
 
     await update.message.reply_text(
         _bold_blockquote("✅ 𝗖𝗔𝗣𝗧𝗖𝗛𝗔 𝗩𝗘𝗥𝗜𝗙𝗜𝗘𝗗\n\n✅ 𝗔𝗖𝗖𝗘𝗦𝗦 𝗚𝗥𝗔𝗡𝗧𝗘𝗗!"),
