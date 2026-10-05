@@ -3165,7 +3165,15 @@ async def _telegram_error_handler(update: object, context: ContextTypes.DEFAULT_
         "telegram handler error update=%s: %s",
         type(update).__name__, error,
         exc_info=(type(error), error, error.__traceback__) if error else None)
-
+async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Admin only.")
+        return
+    _stop_admin_panel_live_task(uid)
+    await update.message.reply_text(
+        "🛠 *Admin Panel*\n\nSelect an action:",
+        parse_mode="Markdown", reply_markup=admin_panel_kb())
 
 # ============================================================
 # MAIN
@@ -3186,6 +3194,7 @@ def main():
     bot_instance = app.bot
 
     app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(
         admin_callback,
         pattern=r"^admin_(back|stats|channels|add_channel|add_firebase|bulk_add_firebase|manage_fb|broadcast|toggle_maintenance|toggle_captcha|remove_channel:\d+|fb_refresh:\d+|fb_delete:\d+|fb_info:\d+|gift_access|gift_single|gift_all)$"))
